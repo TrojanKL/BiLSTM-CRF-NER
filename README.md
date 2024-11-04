@@ -1,8 +1,19 @@
 # 这里是一个基于BiLSTM+CRF层实现的实体抽取实战
 
+## 安装依赖：
+
+```shell
+cd path\to\your\project
+pip install -r requirements.txt
+```
+
 ## 如何运行：
 
-merge.py>process.py>BiLSTM+CRF-model.py or BILSTM-zhaobiao.py
+```shell
+python main.py
+```
+
+
 
 ## 实验思路：
 
@@ -16,7 +27,6 @@ merge.py>process.py>BiLSTM+CRF-model.py or BILSTM-zhaobiao.py
 - 模型选择
 - 模型训练
 - 结果展示
-- 代码全貌
 
 ## 数据预处理：
 
@@ -422,3 +432,4 @@ Total time: 21.525487422943115 seconds
 代码中也没有设置早停，在之前我尝试过迭代30次，某几轮迭代的准确率甚至能达到1。说明模型过拟合的现象严重并且没有相应的措施，需要改进。
 
 ### 
+
