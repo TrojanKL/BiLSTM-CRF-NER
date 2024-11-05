@@ -30,61 +30,82 @@ python main.py
 
 ## 数据预处理：
 
-### 合并：
+### 合并分散的CSV：
+
+首先我们初始化实例，这个构造函数过接受 `folder_path`、`output_file` 和 `usecols` 三个参数，初始化了 `CSVMerger` 类实例的一些核心配置（如文件夹路径、输出文件路径、要读取的列）。同时，它还创建了一个空列表 `all_data`，用于存储后续读取的 CSV 文件数据。
+
+```python
+def __init__(self, folder_path, output_file, usecols):
+    self.folder_path = folder_path
+    self.output_file = output_file
+    self.usecols = usecols
+    self.all_data = []
+```
 
 由于搜集到的数据是多个csv并且行和列有固定格式，所以我们直接调用 pandas 库对csv进行合并。提取列名为招标人、中标人、中标金额、中标时间这四列下的所有数据。
 
-```python
-# 设置读取的列
-usecols = [1, 2, 3, 4]
-# 获取文件夹中所有csv文件的文件名
-file_list = os.listdir(folder_path)
-csv_files = [file_name for file_name in file_list if file_name.endswith('.csv')]
-```
-
 合并时考虑到不同csv可能使用不同的编码格式，我们使用 chardet 库对每个csv进行编码格式的检测，并且以原本的格式读取。
-
-```python
-for file_name in csv_files:
-    # 构造每个csv文件的路径
-    file_path = os.path.join(folder_path, file_name)
-    try:
-        # 探测文件编码格式
-        with open(file_path, 'rb') as f:
-            encoding = chardet.detect(f.read())['encoding']
-        # 读取csv文件的数据
-        temp_df = pd.read_csv(file_path, encoding=encoding, usecols=usecols)
-        all_data.append(temp_df)
-        print(f"Reading {file_path}...")
-    except (UnicodeDecodeError, pd.errors.EmptyDataError):
-        print(f"Error reading {file_path}. Skipping...")
-```
 
 对合并的数据进行简单的预处理。将NaN替换为空值并且删除空行。最后保存为编码格式为"gbk"的csv。
 
 ```python
-# 将所有数据进行纵向合并
-result_df = pd.concat(all_data)
+ def merge_csv_files(self):
+        # 获取文件夹中所有csv文件的文件名
+        file_list = os.listdir(self.folder_path)
+        csv_files = [file_name for file_name in file_list if file_name.endswith('.csv')]
 
-result_df.replace(['无', '未提供', '未提及'], '', inplace=True)
-# NaN替换为空值
-result_df.fillna('', inplace=True)
-# 删除空行
-result_df.dropna(thresh=1, inplace=True)
+        for file_name in csv_files:
+            # 构造每个csv文件的路径
+            file_path = os.path.join(self.folder_path, file_name)
+            try:
+                # 探测文件编码格式
+                with open(file_path, 'rb') as f:
+                    encoding = chardet.detect(f.read())['encoding']
+                # 读取csv文件的数据
+                temp_df = pd.read_csv(file_path, encoding=encoding, usecols=self.usecols)
+                self.all_data.append(temp_df)
+                print(f"Reading {file_path}...")
+            except (UnicodeDecodeError, pd.errors.EmptyDataError):
+                print(f"Failed reading {file_path}. Skipping...")
 
-# 将结果保存到csv文件中
-result_df.to_csv(output_file, encoding='gbk', index=False)
+        # 将所有数据进行纵向合并
+        self.combine_data()
+```
+
+```python
+def combine_data(self):
+    # 将所有数据合并
+    result_df = pd.concat(self.all_data)
+
+    result_df.replace(['无', '未提供', '未提及'], '', inplace=True)
+    # NaN替换为空值
+    result_df.fillna('', inplace=True)
+    # 删除空行
+    result_df.dropna(thresh=1, inplace=True)
+
+    # 将结果保存到csv文件中
+    result_df.to_csv(self.output_file, encoding='gbk', index=False)
+    print(f"Data merged and saved to {self.output_file}")
 ```
 
 ### 转化标签：
 
 在上一步我们对数据进行了合并并且进行了简单的预处理。现在我们需要对csv中的四个实体进行NER标注。为了实现在BILSTM模型中训练，我们需要将已经打好的标签转化为数字标签。并且将样本和标签对应。
 
-```python
-# 转换实体标签为数字标签
-tag2id = {'O': 0, 'B-PER': 1, 'I-PER': 2, 'B-ORG': 3, 'I-ORG': 4, 'B-LOC': 5, 'I-LOC': 6}
-id2tag = {v:k for k,v in tag2id.items()}
+同样的，先初始化实例。该构造函数初始化了类实例所需的路径（输入文件、输出文件和处理后的文件）。
 
+使用 `pandas` 读取输入的 CSV 文件并存储到 `self.df` 中，方便后续的处理。
+
+创建了两个字典：`tag2id` 用于标签到 ID 的映射，`id2tag` 用于 ID 到标签的反向映射，常用于处理标签化数据，尤其是命名实体识别（NER）任务中。
+
+```python
+def __init__(self, input_file, output_file, processed_file):
+    self.input_file = input_file
+    self.output_file = output_file
+    self.processed_file = processed_file
+    self.df = pd.read_csv(self.input_file, encoding='gbk')
+    self.tag2id = {'O': 0, 'B-PER': 1, 'I-PER': 2, 'B-ORG': 3, 'I-ORG': 4, 'B-LOC': 5, 'I-LOC': 6}
+    self.id2tag = {v: k for k, v in self.tag2id.items()}
 ```
 
 这段代码定义了两个Python字典，用于将命名实体标签转换为数字标签以进行机器学习模型的训练和预测。
@@ -94,34 +115,32 @@ tag2id字典将命名实体标签映射到相应的数字标签，其中'O'代�
 而id2tag字典则是将数字标签转换回相应的命名实体标签，以便在训练后对预测结果进行解码。
 
 ```python
-# 将每个数据样本转换为适合输入模型的格式
-def preprocess_data(df):
-    data = []
-    for i, row in df.iterrows():
-        sentence = []
-        tags = []
-        for col in df.columns:
-            if col == '招标人':
-                entity_tag = 'B-ORG'
-            elif col == '中标人':
-                entity_tag = 'B-PER'
-            elif col == '中标金额':
-                entity_tag = 'B-LOC'
-            elif col == '中标时间':
-                entity_tag = 'B-LOC'
-            else:
-                entity_tag = 'O'
-            tokens = row[col].split()
-            for j, token in enumerate(tokens):
-                sentence.append(token)
-                if j == 0:
-                    tags.append(entity_tag)
+    def preprocess_data(self):
+        data = []
+        for i, row in self.df.iterrows():
+            sentence = []
+            tags = []
+            for col in self.df.columns:
+                if col == '招标人':
+                    entity_tag = 'B-ORG'
+                elif col == '中标人':
+                    entity_tag = 'B-PER'
+                elif col == '中标金额':
+                    entity_tag = 'B-LOC'
+                elif col == '中标时间':
+                    entity_tag = 'B-LOC'
                 else:
-                    tags.append('I' + entity_tag[1:])
-        data.append((sentence, tags))
-    return data
+                    entity_tag = 'O'
 
-data = preprocess_data(df)
+                tokens = row[col].split()
+                for j, token in enumerate(tokens):
+                    sentence.append(token)
+                    if j == 0:
+                        tags.append(entity_tag)
+                    else:
+                        tags.append('I' + entity_tag[1:])
+            data.append((sentence, tags))
+        return data
 ```
 
 
@@ -129,30 +148,45 @@ data = preprocess_data(df)
 
 在该函数中，首先遍历每个数据样本，然后遍历该样本的每一列。对于不同的列，函数将其值的分词序列转换为相应的命名实体标签序列。例如，如果列名为“招标人”，则该列的实体标签被设置为“B-ORG”（即开始的组织机构实体），并且该列的每个分词都被分配为该实体的内部标记（即“I-ORG”）。
 
-最后，函数将转换后的数据样本存储在一个列表（data）中并返回。调用函数的代码将返回的列表（data）赋值给变量data。
+函数将转换后的数据样本存储在一个列表（data）中并返回。调用函数的代码将返回的列表（data）赋值给变量data并输出一份编码为gbk，列之间用空格分隔的txt文件。
 
 ```python
-with open('./data/processed.txt', 'w', encoding='gbk') as f:
-    for sentence, tags in data:
-        for i in range(len(sentence)):
-            f.write(sentence[i] + ' ' + tags[i] + '\n')
-        f.write('\n')
+    def save_processed_data(self, data):
+        with open(self.output_file, 'w', encoding='gbk') as f:
+            for sentence, tags in data:
+                for i in range(len(sentence)):
+                    f.write(sentence[i] + ' ' + tags[i] + '\n')
+                f.write('\n')
+        print(f"Data processed and saved to {self.output_file}")
 ```
 
-输出一份编码为gbk，列之间用空格分隔的txt文件。
+process方法将DataProcessor类的各个方法串联并且调用，完成了数据处理。
+
+```python
+    def process(self):
+        self.fill_missing_values()
+        data = self.preprocess_data()
+        self.save_processed_data(data)
+
+        X, y = self.convert_to_numpy(data)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
+        self.save_npz(X_train, y_train, X_test, y_test)
+```
+
+
 
 ## 模型选择：
 
 训练模型我们选择BILSTM(双向长短期记忆网络)+CRF(条件随机场)相结合的模型，BILSTM-CRF。
 
-BILSTM-CRF是一种用于命名实体识别的序列标注模型。它的好处如下：
+BILSTM-CRF是一种用于命名实体识别的序列标注模型。有以下特点：
 
 1. 上下文信息：BILSTM能够捕捉序列数据中的上下文信息，包括前面和后面的词语，从而更好地理解语境，提高预测的准确性。
 2. 不同长度的序列：BILSTM可以应对不同长度的序列，因为它是基于序列的输入进行处理的，因此对于不同长度的序列也能够产生较为稳定的结果。
 3. CRF模型：CRF模型可以将BILSTM输出的概率分布转换为标签序列，考虑到标签之间的相关性，从而更好地处理标注结果的一致性和准确性。
 4. 鲁棒性：BILSTM-CRF模型通常在命名实体识别任务中表现优异，并且在处理噪声和错误的情况下表现鲁棒性强，这在现实场景中具有实际应用价值。
 
-总之，BILSTM-CRF模型能够从序列数据中提取上下文信息并产生准确且一致的标注结果，因此在序列标注任务中具有广泛的应用前景。
+综上，BILSTM-CRF模型能够从序列数据中提取上下文信息并产生准确且一致的标注结果，因此在序列标注任务中具有广泛的应用前景。
 
 ## 模型训练：
 
@@ -419,7 +453,9 @@ Total time: 21.525487422943115 seconds
 
 <center>测试集准确率88.67%<center>
 
+
 <center>程序总耗时：21.52 seconds<center>
+
 
 
 
@@ -427,9 +463,4 @@ Total time: 21.525487422943115 seconds
 
 ## 模型优化：
 
-训练集的准确率达到了99.7%，但是测试集的准确率却只有88.67% 说明模型已经出现了过拟合的现象。相较于上次的实验，本次的实验首先是数据量变少了，其次就是没有进行数据打乱，因为本次的数据上下文有较强的关联性。对数据进行打乱可能出现准确率变低或者模型效率较低的问题。但是可以发现不进行打乱也导致了过拟合的现象。
-
-代码中也没有设置早停，在之前我尝试过迭代30次，某几轮迭代的准确率甚至能达到1。说明模型过拟合的现象严重并且没有相应的措施，需要改进。
-
-### 
-
+模型容易出现过拟合现象。
